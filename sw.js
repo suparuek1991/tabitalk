@@ -1,0 +1,24 @@
+// เก็บไฟล์แอปไว้ในเครื่อง เพื่อให้เปิดแอป + ใช้วลีด่วนได้แม้ไม่มีเน็ต
+const CACHE = 'tabitalk-v1';
+const FILES = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
+
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
+  self.skipWaiting();
+});
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))));
+  self.clients.claim();
+});
+self.addEventListener('fetch', e => {
+  const u = new URL(e.request.url);
+  if (u.origin !== location.origin) return; // ไม่แคชการเรียก Gemini
+  // ลองโหลดของใหม่ก่อน ถ้าไม่มีเน็ตค่อยใช้ของในเครื่อง
+  e.respondWith(
+    fetch(e.request).then(r => {
+      const copy = r.clone();
+      caches.open(CACHE).then(c => c.put(e.request, copy));
+      return r;
+    }).catch(() => caches.match(e.request))
+  );
+});

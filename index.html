@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TabiTalk">
+<meta name="theme-color" content="#c8102e">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>TabiTalk แปลไทย-ญี่ปุ่น</title>
+<style>
+:root{--red:#c8102e;--bg:#f6f4f1;--card:#fff;--ink:#1d1d1f;--mute:#777;--line:#e4e0da;--blue:#1f5fbf}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,"Sukhumvit Set","Hiragino Sans",system-ui,sans-serif}
+body{display:flex;flex-direction:column;height:100dvh;padding-top:env(safe-area-inset-top)}
+main{flex:1;overflow:hidden;position:relative}
+.view{position:absolute;inset:0;display:none;overflow:auto;-webkit-overflow-scrolling:touch}
+.view.on{display:flex;flex-direction:column}
+nav{display:flex;background:#fff;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;padding:8px 0 6px;font-size:12px;color:var(--mute);font-family:inherit}
+nav button b{display:block;font-size:22px;line-height:1.2}
+nav button.on{color:var(--red);font-weight:600}
+button{font-family:inherit}
+/* conversation */
+.half{flex:1;display:flex;flex-direction:column;padding:12px 14px;min-height:0}
+.half.top{transform:rotate(180deg);background:#fff}
+.half.bot{background:var(--bg)}
+.divider{height:2px;background:var(--red);opacity:.6}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.hd .lab{font-size:13px;color:var(--mute)}
+.hd select{font-size:15px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:#fff;font-family:inherit}
+.out{flex:1;overflow:auto;padding:8px 2px;min-height:0}
+.out .big{font-size:26px;line-height:1.35;font-weight:600;word-break:break-word}
+.out .small{font-size:15px;color:var(--mute);margin-top:6px}
+.out .read{font-size:16px;color:var(--blue);margin-top:6px}
+.out .hint{color:#aaa;font-size:16px}
+.ctl{display:flex;gap:10px;align-items:center;justify-content:center}
+.mic{width:74px;height:74px;border-radius:50%;border:0;background:var(--red);color:#fff;font-size:30px;box-shadow:0 3px 10px rgba(200,16,46,.35)}
+.mic.rec{animation:pulse 1s infinite;background:#e0002a}
+.mic.busy{background:#999;box-shadow:none}
+@keyframes pulse{50%{transform:scale(1.08)}}
+.sbtn{width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:20px}
+.swap{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:3;border:0;background:#fff;border-radius:20px;padding:6px 10px;box-shadow:0 1px 6px rgba(0,0,0,.15);font-size:13px}
+/* generic */
+.pad{padding:14px}
+h2{margin:4px 0 10px;font-size:20px}
+.card{background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 14px;font-size:15px}
+.pill.on{background:var(--red);color:#fff;border-color:var(--red)}
+.btn{border:0;background:var(--red);color:#fff;border-radius:12px;padding:14px;font-size:17px;width:100%;font-weight:600}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+input[type=text],input[type=password],textarea{width:100%;font-size:16px;padding:10px;border:1px solid var(--line);border-radius:10px;font-family:inherit}
+img.prev{max-width:100%;border-radius:10px;display:block;margin:8px 0}
+.item .o{font-size:14px;color:var(--mute)}
+.item .t{font-size:18px;font-weight:600;margin:2px 0}
+.item .n{font-size:14px;color:#a0522d}
+.cat{font-weight:700;margin:14px 2px 6px;color:var(--red)}
+.ph{display:flex;align-items:center;gap:10px}
+.ph .tx{flex:1}
+.ph .th{font-size:15px;font-weight:600}
+.ph .jp{font-size:19px;margin:2px 0}
+.ph .rd{font-size:14px;color:var(--blue)}
+.muted{color:var(--mute);font-size:14px}
+.err{color:#b00020;font-size:14px}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid #ddd;border-top-color:var(--red);border-radius:50%;animation:sp .8s linear infinite;vertical-align:middle}
+@keyframes sp{to{transform:rotate(360deg)}}
+#show{position:fixed;inset:0;background:#fff;z-index:50;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+#show .jp{font-size:44px;font-weight:700;line-height:1.3}
+#show .th{font-size:18px;color:var(--mute);margin-top:18px}
+#show .x{position:absolute;top:calc(14px + env(safe-area-inset-top));right:16px;font-size:28px;border:0;background:none}
+#tbox{position:fixed;left:0;right:0;bottom:0;background:#fff;z-index:40;padding:12px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.15);display:none}
+</style>
+</head>
+<body>
+<main>
+  <!-- ===== สนทนา ===== -->
+  <section class="view on" id="v-talk">
+    <div class="half top">
+      <div class="hd">
+        <span class="lab" id="topLab">日本語</span>
+        <span class="lab">相手 / Partner</span>
+      </div>
+      <div class="out" id="outTop"><div class="hint">ボタンを押して話してください</div></div>
+      <div class="ctl">
+        <button class="sbtn" onclick="replay('top')">🔊</button>
+        <button class="mic" id="micTop" onclick="toggleRec('top')">🎤</button>
+        <button class="sbtn" onclick="openType('top')">⌨️</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <button class="swap" onclick="cyclePartner()" id="swapBtn">ภาษาคู่สนทนา: 🇯🇵</button>
+    <div class="half bot">
+      <div class="hd">
+        <span class="lab">ไทย (ฉัน)</span>
+        <span class="lab" id="botStatus"></span>
+      </div>
+      <div class="out" id="outBot"><div class="hint">แตะ 🎤 แล้วพูดภาษาไทย แตะอีกครั้งเพื่อหยุด</div></div>
+      <div class="ctl">
+        <button class="sbtn" onclick="replay('bot')">🔊</button>
+        <button class="mic" id="micBot" onclick="toggleRec('bot')">🎤</button>
+        <button class="sbtn" onclick="openType('bot')">⌨️</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== กล้อง ===== -->
+  <section class="view" id="v-cam">
+    <div class="pad">
+      <h2>📷 ถ่ายรูปแปล</h2>
+      <div class="row" id="camModes">
+        <button class="pill on" data-m="general">ป้าย/ทั่วไป</button>
+        <button class="pill" data-m="menu">เมนูอาหาร</button>
+        <button class="pill" data-m="product">ฉลากสินค้า/ยา</button>
+      </div>
+      <div style="height:10px"></div>
+      <label class="btn" style="display:block;text-align:center">📸 ถ่ายรูป / เลือกรูป
+        <input type="file" accept="image/*" id="camFile" style="display:none">
+      </label>
+      <img class="prev" id="camPrev" style="display:none">
+      <div id="camOut"></div>
+    </div>
+  </section>
+
+  <!-- ===== วลีด่วน ===== -->
+  <section class="view" id="v-phr">
+    <div class="pad">
+      <h2>⭐ วลีด่วน <span class="muted">(ใช้ได้แม้ไม่มีเน็ต)</span></h2>
+      <div class="muted" style="margin-bottom:6px">แตะ 🔊 ให้เครื่องพูด หรือแตะข้อความเพื่อขยายเต็มจอให้คนญี่ปุ่นอ่าน</div>
+      <div id="phrList"></div>
+    </div>
+  </section>
+
+  <!-- ===== ตั้งค่า / ประวัติ ===== -->
+  <section class="view" id="v-set">
+    <div class="pad">
+      <h2>⚙️ ตั้งค่า</h2>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px">Gemini API Key</div>
+        <input type="password" id="apiKey" placeholder="วาง API key ที่นี่ (AIza...)">
+        <div class="muted" style="margin:6px 0">ขอได้ฟรีที่ aistudio.google.com → Get API key · เก็บไว้ในเครื่องนี้เท่านั้น</div>
+        <div style="font-weight:600;margin:10px 0 6px">โมเดล</div>
+        <input type="text" id="model">
+        <div class="muted" style="margin-top:6px">แนะนำ gemini-3.8-flash (แม่นกว่า) หรือ gemini-3.5-flash-lite (เร็ว/ถูกกว่า)</div>
+        <div style="height:10px"></div>
+        <button class="btn" onclick="saveSet()">บันทึก</button>
+        <div id="setMsg" class="muted" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px">ทดสอบเสียง</div>
+        <div class="row">
+          <button class="pill" onclick="speak('こんにちは。よろしくお願いします。','ja')">🇯🇵 ญี่ปุ่น</button>
+          <button class="pill" onclick="speak('Hello, nice to meet you.','en')">🇬🇧 อังกฤษ</button>
+          <button class="pill" onclick="speak('สวัสดีครับ','th')">🇹🇭 ไทย</button>
+        </div>
+      </div>
+      <h2 style="margin-top:18px">🕘 ประวัติการแปล</h2>
+      <button class="btn ghost" onclick="clearHist()" style="margin-bottom:10px">ล้างประวัติ</button>
+      <div id="histList"></div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button class="on" data-v="talk"><b>🗣️</b>สนทนา</button>
+  <button data-v="cam"><b>📷</b>กล้อง</button>
+  <button data-v="phr"><b>⭐</b>วลีด่วน</button>
+  <button data-v="set"><b>⚙️</b>ตั้งค่า</button>
+</nav>
+
+<div id="show" onclick="this.style.display='none'">
+  <button class="x">✕</button>
+  <div class="jp" id="showJp"></div>
+  <div class="th" id="showTh"></div>
+</div>
+
+<div id="tbox">
+  <textarea id="tIn" rows="3"></textarea>
+  <div class="row" style="margin-top:8px;flex-wrap:nowrap">
+    <button class="btn ghost" onclick="closeType()">ยกเลิก</button>
+    <button class="btn" onclick="sendType()">แปล</button>
+  </div>
+</div>
+
+<script>
+/* ================= ค่าพื้นฐาน ================= */
+const LANG = {
+  th:{name:'Thai', label:'ไทย', tts:'th-TH', flag:'🇹🇭'},
+  ja:{name:'Japanese', label:'日本語', tts:'ja-JP', flag:'🇯🇵'},
+  en:{name:'English', label:'English', tts:'en-US', flag:'🇬🇧'}
+};
+const DEFAULT_MODEL = 'gemini-3.8-flash';
+const S = {
+  get key(){return localStorage.getItem('tt_key')||''},
+  get model(){return localStorage.getItem('tt_model')||DEFAULT_MODEL},
+  partner: localStorage.getItem('tt_partner')||'ja'
+};
+const last = {top:null, bot:null}; // {text, lang} สำหรับปุ่มเล่นซ้ำ
+
+/* ================= แท็บ ================= */
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+b.dataset.v));
+  if(b.dataset.v==='set') renderHist();
+});
+
+/* ================= Gemini ================= */
+async function gemini(parts, schemaHint){
+  if(!S.key){ throw new Error('ยังไม่ได้ใส่ API key — ไปที่แท็บ ⚙️ ตั้งค่า'); }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model)}:generateContent`;
+  const body = {
+    contents:[{role:'user', parts}],
+    generationConfig:{responseMimeType:'application/json', thinkingConfig:{thinkingLevel:'low'}}
+  };
+  let r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},body:JSON.stringify(body)});
+  if(r.status===400){ // บางโมเดลไม่รองรับ thinkingConfig → ลองใหม่แบบไม่ใส่
+    delete body.generationConfig.thinkingConfig;
+    r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},body:JSON.stringify(body)});
+  }
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error((j.error&&j.error.message)||('HTTP '+r.status));
+  const txt = (j.candidates?.[0]?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
+  try{ return JSON.parse(txt.replace(/^```json\s*|```$/g,'')); }
+  catch(e){ throw new Error('อ่านคำตอบไม่ได้: '+txt.slice(0,120)); }
+}
+
+function transPrompt(src,dst,isAudio){
+  const read = dst==='ja'
+    ? '"reading": how to pronounce the Japanese translation, written in Thai script (คำอ่านภาษาไทย), so a Thai speaker can say it aloud.'
+    : '"reading": "" (empty string).';
+  return `You are a travel interpreter for a Thai tourist in Japan.
+${isAudio?`The audio is speech in ${LANG[src].name}. Transcribe it exactly into "heard".`:`The user text is in ${LANG[src].name}; copy it into "heard".`}
+Translate it naturally into ${LANG[dst].name} in "translation".
+${dst==='ja'?'Use polite Japanese (です/ます form) suitable for talking to shop staff, station staff and hotel staff.':''}
+${dst==='th'?'Use natural, polite spoken Thai.':''}
+${read}
+If the audio is silent or unintelligible, set "heard" to "" and "translation" to "".
+Return ONLY JSON: {"heard":"...","translation":"...","reading":"..."}`;
+}
+
+/* ================= อัดเสียง → WAV ================= */
+let rec=null, chunks=[], recSide=null, stream=null, actx=null, busy=false;
+
+async function toggleRec(side){
+  unlockTTS();
+  if(busy) return;
+  if(rec && rec.state==='recording'){ if(recSide===side) rec.stop(); return; }
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') await actx.resume();
+    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  }catch(e){ showOut(side,`<div class="err">เปิดไมค์ไม่ได้: ${e.message}<br>ตรวจสิทธิ์ไมโครโฟนใน ตั้งค่า > Safari</div>`); return; }
+  chunks=[]; recSide=side;
+  rec = new MediaRecorder(stream);
+  rec.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
+  rec.onstop = onRecStop;
+  rec.start();
+  btn(side).classList.add('rec'); btn(side).textContent='⏹';
+  status(side,'กำลังฟัง… แตะเพื่อหยุด');
+}
+function btn(side){return document.getElementById(side==='top'?'micTop':'micBot')}
+function status(side,msg){ if(side==='bot') document.getElementById('botStatus').textContent=msg; }
+
+async function onRecStop(){
+  const side=recSide;
+  stream.getTracks().forEach(t=>t.stop());
+  btn(side).classList.remove('rec'); btn(side).classList.add('busy'); btn(side).textContent='⏳';
+  busy=true; status(side,'กำลังแปล…');
+  showOut(side,'<span class="spin"></span>'); showOut(other(side),'<span class="spin"></span>');
+  try{
+    const blob = new Blob(chunks,{type:rec.mimeType||'audio/mp4'});
+    const wav64 = await blobToWav16k(blob);
+    const [src,dst] = side==='bot' ? ['th',S.partner] : [S.partner,'th'];
+    const res = await gemini([{text:transPrompt(src,dst,true)},{inlineData:{mimeType:'audio/wav',data:wav64}}]);
+    renderResult(side,src,dst,res);
+  }catch(e){ showOut(side,`<div class="err">${e.message}</div>`); showOut(other(side),''); }
+  finally{ busy=false; btn(side).classList.remove('busy'); btn(side).textContent='🎤'; status(side,''); }
+}
+function other(s){return s==='top'?'bot':'top'}
+
+async function blobToWav16k(blob){
+  const buf = await blob.arrayBuffer();
+  const audio = await new Promise((ok,bad)=>actx.decodeAudioData(buf,ok,bad));
+  const rate=16000, len=Math.ceil(audio.duration*rate);
+  const off = new OfflineAudioContext(1,len,rate);
+  const srcN = off.createBufferSource(); srcN.buffer=audio; srcN.connect(off.destination); srcN.start();
+  const pcm = (await off.startRendering()).getChannelData(0);
+  const dv = new DataView(new ArrayBuffer(44+pcm.length*2));
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i))};
+  w(0,'RIFF');dv.setUint32(4,36+pcm.length*2,true);w(8,'WAVE');w(12,'fmt ');
+  dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true);dv.setUint32(28,rate*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);
+  w(36,'data');dv.setUint32(40,pcm.length*2,true);
+  for(let i=0;i<pcm.length;i++){const s=Math.max(-1,Math.min(1,pcm[i]));dv.setInt16(44+i*2,s<0?s*0x8000:s*0x7fff,true);}
+  return bytesToB64(new Uint8Array(dv.buffer));
+}
+function bytesToB64(u8){let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s);}
+
+/* ================= แสดงผลสนทนา ================= */
+function showOut(side,html){document.getElementById(side==='top'?'outTop':'outBot').innerHTML=html;}
+function esc(s){return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+
+function renderResult(side,src,dst,res){
+  if(!res.heard){ showOut(side,'<div class="err">ไม่ได้ยินเสียงพูด ลองใหม่อีกครั้ง</div>'); showOut(other(side),''); return; }
+  // ฝั่งคนพูด: แสดงสิ่งที่ตัวเองพูด + (ถ้าแปลเป็นญี่ปุ่น) คำอ่าน
+  showOut(side, `<div class="small">${LANG[src].flag} ${esc(res.heard)}</div>
+    <div class="big" style="font-size:20px;margin-top:6px">${LANG[dst].flag} ${esc(res.translation)}</div>
+    ${res.reading?`<div class="read">🗣 ${esc(res.reading)}</div>`:''}`);
+  // ฝั่งผู้ฟัง: คำแปลตัวใหญ่
+  showOut(other(side), `<div class="big">${esc(res.translation)}</div><div class="small">${esc(res.heard)}</div>`);
+  last[other(side)]={text:res.translation,lang:dst};
+  last[side]={text:res.heard,lang:src};
+  speak(res.translation,dst);
+  addHist({type:'talk',src,dst,a:res.heard,b:res.translation,r:res.reading});
+}
+function replay(side){ const l=last[side]; if(l) speak(l.text,l.lang); }
+
+/* พิมพ์แทนพูด */
+let typeSide='bot';
+function openType(side){typeSide=side;const t=document.getElementById('tIn');t.value='';t.placeholder=side==='bot'?'พิมพ์ภาษาไทย':(S.partner==='ja'?'日本語で入力':'Type in English');document.getElementById('tbox').style.display='block';t.focus();}
+function closeType(){document.getElementById('tbox').style.display='none';}
+async function sendType(){
+  unlockTTS();
+  const txt=document.getElementById('tIn').value.trim(); closeType(); if(!txt) return;
+  const side=typeSide, [src,dst]= side==='bot'?['th',S.partner]:[S.partner,'th'];
+  showOut(side,'<span class="spin"></span>'); showOut(other(side),'<span class="spin"></span>');
+  try{ const res=await gemini([{text:transPrompt(src,dst,false)+'\n\nUser text: '+txt}]); if(!res.heard) res.heard=txt; renderResult(side,src,dst,res); }
+  catch(e){ showOut(side,`<div class="err">${e.message}</div>`); showOut(other(side),''); }
+}
+
+function cyclePartner(){
+  S.partner = S.partner==='ja'?'en':'ja'; localStorage.setItem('tt_partner',S.partner); setPartnerUI();
+}
+function setPartnerUI(){
+  document.getElementById('swapBtn').textContent='ภาษาคู่สนทนา: '+LANG[S.partner].flag;
+  document.getElementById('topLab').textContent=LANG[S.partner].label;
+  showOut('top',`<div class="hint">${S.partner==='ja'?'🎤 を押して話してください':'Tap 🎤 and speak'}</div>`);
+}
+
+/* ================= เสียงพูด (TTS) ================= */
+let ttsUnlocked=false;
+function unlockTTS(){ if(ttsUnlocked) return; try{const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);ttsUnlocked=true;}catch(e){} }
+function speak(text,lang){
+  if(!text||!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text); u.lang=LANG[lang].tts; u.rate=lang==='ja'?0.9:1;
+  const v=speechSynthesis.getVoices().find(v=>v.lang.replace('_','-').startsWith(LANG[lang].tts));
+  if(v) u.voice=v;
+  speechSynthesis.speak(u);
+}
+speechSynthesis && speechSynthesis.getVoices();
+
+/* ================= กล้อง ================= */
+let camMode='general';
+document.querySelectorAll('#camModes .pill').forEach(p=>p.onclick=()=>{
+  camMode=p.dataset.m; document.querySelectorAll('#camModes .pill').forEach(x=>x.classList.toggle('on',x===p));
+});
+document.getElementById('camFile').onchange=async e=>{
+  const f=e.target.files[0]; if(!f) return; e.target.value='';
+  const out=document.getElementById('camOut');
+  out.innerHTML='<div class="card"><span class="spin"></span> กำลังอ่านรูปและแปล…</div>';
+  try{
+    const {b64,url}=await shrinkImage(f,1600);
+    const pv=document.getElementById('camPrev'); pv.src=url; pv.style.display='block';
+    const extra = {
+      general:'This is a sign, notice, ticket, timetable or similar. Explain any important instruction (e.g. which platform, exit, warnings).',
+      menu:'This is a restaurant menu or food item. For each dish give the Thai translation, and in "note" briefly say what it is, main ingredients, and flag pork (หมู), beef (เนื้อวัว), seafood, alcohol or raw food. Include price if shown.',
+      product:'This is a product label, package or medicine. Explain what the product is, how to use it, dosage/warnings exactly as written on the label, and any allergens.'
+    }[camMode];
+    const res=await gemini([
+      {text:`You are a travel helper for a Thai tourist in Japan. Read ALL text in the image (Japanese or English). ${extra}
+Return ONLY JSON: {"summary":"one or two sentences in Thai explaining what this is / what to do","items":[{"original":"original text","translation":"Thai translation","note":"short Thai note or empty"}]}
+Keep items in reading order. Do not invent text that is not in the image.`},
+      {inlineData:{mimeType:'image/jpeg',data:b64}}
+    ]);
+    let h=`<div class="card"><b>สรุป:</b> ${esc(res.summary)}</div>`;
+    (res.items||[]).forEach(it=>{
+      h+=`<div class="card item"><div class="o">${esc(it.original)}</div><div class="t">${esc(it.translation)}</div>${it.note?`<div class="n">${esc(it.note)}</div>`:''}</div>`;
+    });
+    out.innerHTML=h;
+    addHist({type:'cam',a:res.summary,b:(res.items||[]).slice(0,4).map(i=>i.translation).join(' / ')});
+  }catch(err){ out.innerHTML=`<div class="card err">${err.message}</div>`; }
+};
+function shrinkImage(file,max){
+  return new Promise((ok,bad)=>{
+    const img=new Image(); const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const sc=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement('canvas'); c.width=Math.round(img.width*sc); c.height=Math.round(img.height*sc);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      const d=c.toDataURL('image/jpeg',0.85); ok({b64:d.split(',')[1],url:d});
+    };
+    img.onerror=()=>bad(new Error('เปิดรูปไม่ได้')); img.src=url;
+  });
+}
+
+/* ================= วลีด่วน (ออฟไลน์) ================= */
+const PHRASES = [
+ ['ทั่วไป',[
+  ['สวัสดี','こんにちは','คนนิจิวะ'],
+  ['ขอบคุณมากครับ/ค่ะ','ありがとうございます','อาริงาโต โกไซมัส'],
+  ['ขอโทษครับ (เรียก/ขอทาง)','すみません','สุมิมาเซ็น'],
+  ['ไม่เข้าใจภาษาญี่ปุ่น','日本語がわかりません','นิฮงโกะ งะ วาคาริมาเซ็น'],
+  ['ห้องน้ำอยู่ที่ไหน','トイレはどこですか？','โทอิเระ วะ โดโกะ เดสึกะ'],
+  ['ช่วยถ่ายรูปให้หน่อยได้ไหม','写真を撮ってもらえますか？','ชาชิน โอ ทตเตะ โมราเอมัส กะ'],
+ ]],
+ ['ร้านอาหาร',[
+  ['ขอเมนูหน่อย','メニューをください','เมนิว โอ คุดาไซ'],
+  ['เอาอันนี้ 1 ที่','これをひとつください','โคเระ โอ ฮิโตะสึ คุดาไซ'],
+  ['ขอน้ำเปล่า','お水をください','โอมิสึ โอ คุดาไซ'],
+  ['อันนี้มีหมูไหม','これは豚肉が入っていますか？','โคเระ วะ บุตะนิคุ งะ ไฮตเตะ อิมัส กะ'],
+  ['อันนี้มีเนื้อวัวไหม','これは牛肉が入っていますか？','โคเระ วะ กิวนิคุ งะ ไฮตเตะ อิมัส กะ'],
+  ['เช็คบิลด้วย','お会計お願いします','โอไคเค โอเนไงชิมัส'],
+  ['จ่ายด้วยบัตรได้ไหม','カードで払えますか？','คาโดะ เดะ ฮาราเอมัส กะ'],
+ ]],
+ ['เดินทาง (รถบัส/รถไฟ)',[
+  ['รถบัสไปชิราคาวาโกะขึ้นที่ไหน','白川郷行きのバスはどこから乗りますか？','ชิราคาวาโกะ ยุกิ โนะ บาสุ วะ โดโกะ คาระ โนริมัส กะ'],
+  ['ป้ายรถเมล์อยู่ที่ไหน','バス停はどこですか？','บาสุเต วะ โดโกะ เดสึกะ'],
+  ['สถานีอยู่ที่ไหน','駅はどこですか？','เอกิ วะ โดโกะ เดสึกะ'],
+  ['รถไฟขบวนนี้ไปสนามบินนาริตะไหม','この電車は成田空港に行きますか？','โคโนะ เด็นฉะ วะ นาริตะ คูโค นิ อิคิมัส กะ'],
+  ['ช่วยไปส่งที่นี่ (แท็กซี่ + ชี้แผนที่)','ここまでお願いします','โคโคะ มาเดะ โอเนไงชิมัส'],
+  ['ใช้เวลานานเท่าไร','どのくらいかかりますか？','โดโนะ คุไร คาคาริมัส กะ'],
+ ]],
+ ['โรงแรม',[
+  ['ขอเช็คอินครับ/ค่ะ','チェックインをお願いします','เช็กกุอิน โอ โอเนไงชิมัส'],
+  ['ขอฝากกระเป๋าได้ไหม','荷物を預かってもらえますか？','นิโมทสึ โอ อาซึกัตเตะ โมราเอมัส กะ'],
+  ['Wi-Fi รหัสอะไร','Wi-Fiのパスワードは何ですか？','ไวไฟ โนะ พาสุวาโดะ วะ นัน เดสึกะ'],
+ ]],
+ ['หิมะ / ลานสกี',[
+  ['อยากเช่าชุดสกีกับรองเท้าบูท','スキーウェアとブーツをレンタルしたいです','สุกี เวอา โตะ บูทสึ โอ เร็นทารุ ชิไต เดส'],
+  ['อยากเช่าเลื่อนหิมะ','ソリをレンタルしたいです','โซริ โอ เร็นทารุ ชิไต เดส'],
+  ['ไซส์ 26 เซนติเมตร','サイズは26センチです','ไซสึ วะ นิจูโระคุ เซ็นจิ เดส'],
+ ]],
+ ['ฉุกเฉิน',[
+  ['ช่วยด้วย','助けてください','ทาสึเกเตะ คุดาไซ'],
+  ['โรงพยาบาลอยู่ที่ไหน','病院はどこですか？','เบียวอิน วะ โดโกะ เดสึกะ'],
+  ['มียาแก้หวัดไหม','風邪薬はありますか？','คาเซะงุสุริ วะ อาริมัส กะ'],
+  ['ทำของหาย','落とし物をしました','โอโตชิโมโนะ โอ ชิมาชิตะ'],
+  ['หลงทาง','道に迷いました','มิจิ นิ มาโยอิมาชิตะ'],
+ ]],
+];
+function renderPhr(){
+  let h='';
+  PHRASES.forEach(([cat,list])=>{
+    h+=`<div class="cat">${cat}</div>`;
+    list.forEach(([th,jp,rd])=>{
+      h+=`<div class="card ph"><div class="tx" onclick="showBig('${esc(jp)}','${esc(th)}')"><div class="th">${th}</div><div class="jp">${jp}</div><div class="rd">🗣 ${rd}</div></div>
+      <button class="sbtn" onclick="speak('${esc(jp)}','ja')">🔊</button></div>`;
+    });
+  });
+  document.getElementById('phrList').innerHTML=h;
+}
+function showBig(jp,th){document.getElementById('showJp').textContent=jp;document.getElementById('showTh').textContent=th;document.getElementById('show').style.display='flex';speak(jp,'ja');}
+
+/* ================= ประวัติ ================= */
+function addHist(o){const h=JSON.parse(localStorage.getItem('tt_hist')||'[]');o.t=Date.now();h.unshift(o);localStorage.setItem('tt_hist',JSON.stringify(h.slice(0,200)));}
+function renderHist(){
+  const h=JSON.parse(localStorage.getItem('tt_hist')||'[]');
+  document.getElementById('histList').innerHTML = h.length? h.map(x=>{
+    const d=new Date(x.t).toLocaleString('th-TH',{dateStyle:'short',timeStyle:'short'});
+    const say = x.type==='talk'?`<button class="sbtn" onclick="speak(${JSON.stringify(x.b).replace(/"/g,'&quot;')},'${x.dst}')">🔊</button>`:'';
+    return `<div class="card ph"><div class="tx"><div class="muted">${d} · ${x.type==='cam'?'📷':LANG[x.src].flag+'→'+LANG[x.dst].flag}</div>
+      <div>${esc(x.a)}</div><div style="font-weight:600">${esc(x.b)}</div>${x.r?`<div class="rd">🗣 ${esc(x.r)}</div>`:''}</div>${say}</div>`;
+  }).join('') : '<div class="muted">ยังไม่มีประวัติ</div>';
+}
+function clearHist(){ if(confirm('ล้างประวัติทั้งหมด?')){localStorage.removeItem('tt_hist');renderHist();} }
+
+/* ================= ตั้งค่า ================= */
+function saveSet(){
+  localStorage.setItem('tt_key',document.getElementById('apiKey').value.trim());
+  localStorage.setItem('tt_model',document.getElementById('model').value.trim()||DEFAULT_MODEL);
+  document.getElementById('setMsg').textContent='บันทึกแล้ว ✓ กำลังทดสอบ…';
+  gemini([{text:'Return JSON {"ok":true}'}]).then(()=>document.getElementById('setMsg').textContent='บันทึกแล้ว ✓ เชื่อมต่อ Gemini สำเร็จ')
+    .catch(e=>document.getElementById('setMsg').innerHTML='<span class="err">เชื่อมต่อไม่สำเร็จ: '+esc(e.message)+'</span>');
+}
+
+/* ================= เริ่มต้น ================= */
+document.getElementById('apiKey').value=S.key;
+document.getElementById('model').value=S.model;
+setPartnerUI(); renderPhr();
+if(!S.key){ document.querySelector('nav button[data-v="set"]').click(); }
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
