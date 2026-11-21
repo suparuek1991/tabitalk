@@ -115,6 +115,7 @@ img.prev{max-width:100%;border-radius:10px;display:block;margin:8px 0}
         <button class="pill on" data-m="general">ป้าย/ทั่วไป</button>
         <button class="pill" data-m="menu">เมนูอาหาร</button>
         <button class="pill" data-m="product">ฉลากสินค้า/ยา</button>
+        <button class="pill" data-m="article">บทความ/เอกสาร</button>
       </div>
       <div style="height:10px"></div>
       <label class="btn" style="display:block;text-align:center">📸 ถ่ายรูป / เลือกรูป
@@ -142,12 +143,19 @@ img.prev{max-width:100%;border-radius:10px;display:block;margin:8px 0}
         <div style="font-weight:600;margin-bottom:6px">Gemini API Key</div>
         <input type="password" id="apiKey" placeholder="วาง API key ที่นี่ (AIza...)">
         <div class="muted" style="margin:6px 0">ขอได้ฟรีที่ aistudio.google.com → Get API key · เก็บไว้ในเครื่องนี้เท่านั้น</div>
-        <div style="font-weight:600;margin:10px 0 6px">โมเดล</div>
-        <input type="text" id="model">
-        <div class="muted" style="margin-top:6px">แนะนำ gemini-3.8-flash (แม่นกว่า) หรือ gemini-3.5-flash-lite (เร็ว/ถูกกว่า)</div>
+        <div style="font-weight:600;margin:10px 0 6px">โมเดลสำหรับสนทนา</div>
+        <input type="text" id="mTalk">
+        <div style="font-weight:600;margin:10px 0 6px">โมเดลสำหรับกล้อง</div>
+        <input type="text" id="mCam">
+        <div class="muted" style="margin-top:6px">ค่าแนะนำ: สนทนา gemini-3.5-flash-lite (เร็ว โควตา 500/วัน) · กล้อง gemini-3.8-flash (อ่านรูปแม่น 20/วัน) · ถ้าตัวไหนเต็ม แอปจะสลับไปอีกตัวให้เอง</div>
         <div style="height:10px"></div>
         <button class="btn" onclick="saveSet()">บันทึก</button>
         <div id="setMsg" class="muted" style="margin-top:8px"></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:600;margin-bottom:6px">📊 การใช้งานวันนี้ (เครื่องนี้)</div>
+        <div id="usage"></div>
+        <div class="muted" style="margin-top:6px">รีเซ็ตทุกวันราว 15:00 เวลาไทย / 17:00 เวลาญี่ปุ่น · ถ้าใช้ key เดียวกัน 2 เครื่อง ให้รวมตัวเลขของทั้งสองเครื่อง</div>
       </div>
       <div class="card">
         <div style="font-weight:600;margin-bottom:6px">ทดสอบเสียง</div>
@@ -192,25 +200,46 @@ const LANG = {
   ja:{name:'Japanese', label:'日本語', tts:'ja-JP', flag:'🇯🇵'},
   en:{name:'English', label:'English', tts:'en-US', flag:'🇬🇧'}
 };
-const DEFAULT_MODEL = 'gemini-3.8-flash';
+// โมเดล: สนทนาใช้ Lite (โควตาเยอะ เร็ว) / กล้องใช้ Flash (อ่านรูปแม่น) — ถ้าเต็มจะสลับให้อัตโนมัติ
+const DEF_TALK = 'gemini-3.5-flash-lite';
+const DEF_CAM  = 'gemini-3.8-flash';
+// โควตาฟรีต่อวัน (ตามหน้า Rate Limit ของ AI Studio) ใช้แสดงตัวนับเท่านั้น
+const DAILY_LIMIT = {'gemini-3.5-flash-lite':500,'gemini-3.1-flash-lite':500,'gemini-3.8-flash':20,'gemini-3-flash':20};
 const S = {
   get key(){return localStorage.getItem('tt_key')||''},
-  get model(){return localStorage.getItem('tt_model')||DEFAULT_MODEL},
+  get mTalk(){return localStorage.getItem('tt_m_talk')||DEF_TALK},
+  get mCam(){return localStorage.getItem('tt_m_cam')||DEF_CAM},
   partner: localStorage.getItem('tt_partner')||'ja'
 };
+let lastUsedModel='';
 const last = {top:null, bot:null}; // {text, lang} สำหรับปุ่มเล่นซ้ำ
 
 /* ================= แท็บ ================= */
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+b.dataset.v));
-  if(b.dataset.v==='set') renderHist();
+  if(b.dataset.v==='set'){ renderHist(); renderUsage(); }
 });
 
 /* ================= Gemini ================= */
-async function gemini(parts, schemaHint){
+// kind: 'talk' หรือ 'cam' → ลองโมเดลหลักก่อน ถ้าโควตาเต็ม/ใช้ไม่ได้ จะลองอีกตัว
+async function gemini(parts, kind){
   if(!S.key){ throw new Error('ยังไม่ได้ใส่ API key — ไปที่แท็บ ⚙️ ตั้งค่า'); }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model)}:generateContent`;
+  const order = kind==='cam' ? [S.mCam,S.mTalk] : [S.mTalk,S.mCam];
+  const models = [...new Set(order)];
+  let lastErr;
+  for(const m of models){
+    try{ const r = await callModel(m,parts); countUse(m); lastUsedModel=m; return r; }
+    catch(e){
+      lastErr=e;
+      if(!e.retryOther) throw e; // error อื่น (เช่น key ผิด) ไม่ต้องลองตัวถัดไป
+    }
+  }
+  throw new Error('โควตาเต็มทุกโมเดลแล้ว — รอ 1 นาทีแล้วลองใหม่ (ถ้าเต็มรายวัน จะรีเซ็ตราว 15:00 เวลาไทย / 17:00 ญี่ปุ่น)\n'+(lastErr?lastErr.message:''));
+}
+
+async function callModel(model, parts){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const body = {
     contents:[{role:'user', parts}],
     generationConfig:{responseMimeType:'application/json', thinkingConfig:{thinkingLevel:'low'}}
@@ -221,7 +250,12 @@ async function gemini(parts, schemaHint){
     r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},body:JSON.stringify(body)});
   }
   const j = await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error((j.error&&j.error.message)||('HTTP '+r.status));
+  if(!r.ok){
+    const err = new Error((j.error&&j.error.message)||('HTTP '+r.status));
+    // 429 = โควตาเต็ม, 404 = ไม่มีโมเดลนี้, 5xx = เซิร์ฟเวอร์ไม่ว่าง → ลองโมเดลอื่น
+    err.retryOther = r.status===429 || r.status===404 || r.status>=500;
+    throw err;
+  }
   const txt = (j.candidates?.[0]?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
   try{ return JSON.parse(txt.replace(/^```json\s*|```$/g,'')); }
   catch(e){ throw new Error('อ่านคำตอบไม่ได้: '+txt.slice(0,120)); }
@@ -274,7 +308,7 @@ async function onRecStop(){
     const blob = new Blob(chunks,{type:rec.mimeType||'audio/mp4'});
     const wav64 = await blobToWav16k(blob);
     const [src,dst] = side==='bot' ? ['th',S.partner] : [S.partner,'th'];
-    const res = await gemini([{text:transPrompt(src,dst,true)},{inlineData:{mimeType:'audio/wav',data:wav64}}]);
+    const res = await gemini([{text:transPrompt(src,dst,true)},{inlineData:{mimeType:'audio/wav',data:wav64}}],'talk');
     renderResult(side,src,dst,res);
   }catch(e){ showOut(side,`<div class="err">${e.message}</div>`); showOut(other(side),''); }
   finally{ busy=false; btn(side).classList.remove('busy'); btn(side).textContent='🎤'; status(side,''); }
@@ -327,7 +361,7 @@ async function sendType(){
   const txt=document.getElementById('tIn').value.trim(); closeType(); if(!txt) return;
   const side=typeSide, [src,dst]= side==='bot'?['th',S.partner]:[S.partner,'th'];
   showOut(side,'<span class="spin"></span>'); showOut(other(side),'<span class="spin"></span>');
-  try{ const res=await gemini([{text:transPrompt(src,dst,false)+'\n\nUser text: '+txt}]); if(!res.heard) res.heard=txt; renderResult(side,src,dst,res); }
+  try{ const res=await gemini([{text:transPrompt(src,dst,false)+'\n\nUser text: '+txt}],'talk'); if(!res.heard) res.heard=txt; renderResult(side,src,dst,res); }
   catch(e){ showOut(side,`<div class="err">${e.message}</div>`); showOut(other(side),''); }
 }
 
@@ -365,23 +399,38 @@ document.getElementById('camFile').onchange=async e=>{
   try{
     const {b64,url}=await shrinkImage(f,1600);
     const pv=document.getElementById('camPrev'); pv.src=url; pv.style.display='block';
-    const extra = {
-      general:'This is a sign, notice, ticket, timetable or similar. Explain any important instruction (e.g. which platform, exit, warnings).',
-      menu:'This is a restaurant menu or food item. For each dish give the Thai translation, and in "note" briefly say what it is, main ingredients, and flag pork (หมู), beef (เนื้อวัว), seafood, alcohol or raw food. Include price if shown.',
-      product:'This is a product label, package or medicine. Explain what the product is, how to use it, dosage/warnings exactly as written on the label, and any allergens.'
-    }[camMode];
-    const res=await gemini([
-      {text:`You are a travel helper for a Thai tourist in Japan. Read ALL text in the image (Japanese or English). ${extra}
+    let res, h;
+    if(camMode==='article'){
+      res=await gemini([
+        {text:`You are a translator for a Thai reader. Read ALL text in the image (Japanese or English), ignoring small furigana readings above kanji.
+Translate the whole text into natural, flowing Thai, keeping the paragraph structure (separate paragraphs with \\n\\n).
+Return ONLY JSON: {"summary":"one sentence in Thai: what this text is about","translation":"full Thai translation","original":"the original text as read from the image"}
+Do not invent text that is not in the image.`},
+        {inlineData:{mimeType:'image/jpeg',data:b64}}
+      ],'cam');
+      h=`<div class="card"><b>สรุป:</b> ${esc(res.summary)}</div>
+        <div class="card" style="font-size:18px;line-height:1.6;white-space:pre-wrap">${esc(res.translation)}</div>
+        <details class="card"><summary class="muted">ดูต้นฉบับ</summary><div style="white-space:pre-wrap;margin-top:8px">${esc(res.original)}</div></details>`;
+      addHist({type:'cam',a:res.summary,b:String(res.translation||'').slice(0,120)});
+    }else{
+      const extra = {
+        general:'This is a sign, notice, ticket, timetable or similar. Explain any important instruction (e.g. which platform, exit, warnings).',
+        menu:'This is a restaurant menu or food item. For each dish give the Thai translation, and in "note" briefly say what it is, main ingredients, and flag pork (หมู), beef (เนื้อวัว), seafood, alcohol or raw food. Include price if shown.',
+        product:'This is a product label, package or medicine. Explain what the product is, how to use it, dosage/warnings exactly as written on the label, and any allergens.'
+      }[camMode];
+      res=await gemini([
+        {text:`You are a travel helper for a Thai tourist in Japan. Read ALL text in the image (Japanese or English), ignoring small furigana readings above kanji. ${extra}
 Return ONLY JSON: {"summary":"one or two sentences in Thai explaining what this is / what to do","items":[{"original":"original text","translation":"Thai translation","note":"short Thai note or empty"}]}
 Keep items in reading order. Do not invent text that is not in the image.`},
-      {inlineData:{mimeType:'image/jpeg',data:b64}}
-    ]);
-    let h=`<div class="card"><b>สรุป:</b> ${esc(res.summary)}</div>`;
-    (res.items||[]).forEach(it=>{
-      h+=`<div class="card item"><div class="o">${esc(it.original)}</div><div class="t">${esc(it.translation)}</div>${it.note?`<div class="n">${esc(it.note)}</div>`:''}</div>`;
-    });
-    out.innerHTML=h;
-    addHist({type:'cam',a:res.summary,b:(res.items||[]).slice(0,4).map(i=>i.translation).join(' / ')});
+        {inlineData:{mimeType:'image/jpeg',data:b64}}
+      ],'cam');
+      h=`<div class="card"><b>สรุป:</b> ${esc(res.summary)}</div>`;
+      (res.items||[]).forEach(it=>{
+        h+=`<div class="card item"><div class="o">${esc(it.original)}</div><div class="t">${esc(it.translation)}</div>${it.note?`<div class="n">${esc(it.note)}</div>`:''}</div>`;
+      });
+      addHist({type:'cam',a:res.summary,b:(res.items||[]).slice(0,4).map(i=>i.translation).join(' / ')});
+    }
+    out.innerHTML=h+`<div class="muted" style="text-align:right">โมเดล: ${esc(lastUsedModel)}</div>`;
   }catch(err){ out.innerHTML=`<div class="card err">${err.message}</div>`; }
 };
 function shrinkImage(file,max){
@@ -434,6 +483,21 @@ const PHRASES = [
   ['อยากเช่าเลื่อนหิมะ','ソリをレンタルしたいです','โซริ โอ เร็นทารุ ชิไต เดส'],
   ['ไซส์ 26 เซนติเมตร','サイズは26センチです','ไซสึ วะ นิจูโระคุ เซ็นจิ เดส'],
  ]],
+ ['ช้อปปิ้ง (Ueno ฯลฯ)',[
+  ['อันนี้ราคาเท่าไร','これはいくらですか？','โคเระ วะ อิคุระ เดสึกะ'],
+  ['ซื้อแบบปลอดภาษี (Tax-free) ได้ไหม','免税できますか？','เม็นเซ เดคิมัส กะ'],
+  ['ขอลองใส่ได้ไหม','試着してもいいですか？','ชิจากุ ชิเตะ โม อี เดสึกะ'],
+  ['มีไซส์ใหญ่กว่านี้ไหม','もっと大きいサイズはありますか？','มตโตะ โอคิ ไซสึ วะ อาริมัส กะ'],
+  ['มีสีอื่นไหม','ほかの色はありますか？','โฮคะ โนะ อิโระ วะ อาริมัส กะ'],
+  ['เอาอันนี้','これにします','โคเระ นิ ชิมัส'],
+  ['ขอถุงด้วย','袋をください','ฟุคุโระ โอ คุดาไซ'],
+  ['ตู้ล็อกเกอร์หยอดเหรียญอยู่ที่ไหน','コインロッカーはどこですか？','คอยน์ ร็อกกา วะ โดโกะ เดสึกะ'],
+ ]],
+ ['สนามบิน',[
+  ['เคาน์เตอร์เช็คอิน ZIPAIR อยู่ที่ไหน','ZIPAIRのチェックインカウンターはどこですか？','ซิปแอร์ โนะ เช็กกุอิน เคาน์ตา วะ โดโกะ เดสึกะ'],
+  ['ประตูขึ้นเครื่องอยู่ที่ไหน','搭乗口はどこですか？','โทโจกุจิ วะ โดโกะ เดสึกะ'],
+  ['ขอโหลดกระเป๋าใบนี้','この荷物を預けたいです','โคโนะ นิโมทสึ โอ อาซึเกไต เดส'],
+ ]],
  ['ฉุกเฉิน',[
   ['ช่วยด้วย','助けてください','ทาสึเกเตะ คุดาไซ'],
   ['โรงพยาบาลอยู่ที่ไหน','病院はどこですか？','เบียวอิน วะ โดโกะ เดสึกะ'],
@@ -471,15 +535,31 @@ function clearHist(){ if(confirm('ล้างประวัติทั้ง�
 /* ================= ตั้งค่า ================= */
 function saveSet(){
   localStorage.setItem('tt_key',document.getElementById('apiKey').value.trim());
-  localStorage.setItem('tt_model',document.getElementById('model').value.trim()||DEFAULT_MODEL);
+  localStorage.setItem('tt_m_talk',document.getElementById('mTalk').value.trim()||DEF_TALK);
+  localStorage.setItem('tt_m_cam',document.getElementById('mCam').value.trim()||DEF_CAM);
   document.getElementById('setMsg').textContent='บันทึกแล้ว ✓ กำลังทดสอบ…';
-  gemini([{text:'Return JSON {"ok":true}'}]).then(()=>document.getElementById('setMsg').textContent='บันทึกแล้ว ✓ เชื่อมต่อ Gemini สำเร็จ')
+  gemini([{text:'Return JSON {"ok":true}'}],'talk').then(()=>{document.getElementById('setMsg').textContent='บันทึกแล้ว ✓ เชื่อมต่อ Gemini สำเร็จ ('+lastUsedModel+')';renderUsage();})
     .catch(e=>document.getElementById('setMsg').innerHTML='<span class="err">เชื่อมต่อไม่สำเร็จ: '+esc(e.message)+'</span>');
+}
+
+/* ================= ตัวนับการใช้งาน (นับตามวันของ Google = เวลาแปซิฟิก) ================= */
+function quotaDay(){ return new Date().toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'}); }
+function getUse(){ const u=JSON.parse(localStorage.getItem('tt_use')||'{}'); return u.day===quotaDay()?u:{day:quotaDay(),n:{}}; }
+function countUse(m){ const u=getUse(); u.n[m]=(u.n[m]||0)+1; localStorage.setItem('tt_use',JSON.stringify(u)); }
+function renderUsage(){
+  const u=getUse(), ms=[...new Set([S.mTalk,S.mCam,...Object.keys(u.n)])];
+  document.getElementById('usage').innerHTML = ms.map(m=>{
+    const n=u.n[m]||0, lim=DAILY_LIMIT[m], pct=lim?Math.min(100,n/lim*100):0;
+    return `<div style="margin:6px 0"><div class="row" style="justify-content:space-between"><span>${esc(m)}</span><b>${n}${lim?' / '+lim:''}</b></div>
+      ${lim?`<div style="height:6px;background:#eee;border-radius:3px"><div style="height:6px;width:${pct}%;background:${pct>80?'#c8102e':'#2e8b57'};border-radius:3px"></div></div>`:''}</div>`;
+  }).join('');
 }
 
 /* ================= เริ่มต้น ================= */
 document.getElementById('apiKey').value=S.key;
-document.getElementById('model').value=S.model;
+document.getElementById('mTalk').value=S.mTalk;
+document.getElementById('mCam').value=S.mCam;
+renderUsage();
 setPartnerUI(); renderPhr();
 if(!S.key){ document.querySelector('nav button[data-v="set"]').click(); }
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
